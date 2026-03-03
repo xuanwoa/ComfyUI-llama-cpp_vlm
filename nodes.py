@@ -20,10 +20,11 @@ import comfy.utils
 from llama_cpp import Llama
 from llama_cpp.llama_chat_format import (
     Llava15ChatHandler, Llava16ChatHandler, MoondreamChatHandler,
-    NanoLlavaChatHandler, Llama3VisionAlphaChatHandler, MiniCPMv26ChatHandler
+    NanoLlavaChatHandler, Llama3VisionAlphaChatHandler, MiniCPMv26ChatHandler,
+    Qwen35ChatHandler
 )
 
-chat_handlers = ["None", "LLaVA-1.5", "LLaVA-1.6", "Moondream2", "nanoLLaVA", "llama3-Vision-Alpha", "MiniCPM-v2.6", "MiniCPM-v4"]
+chat_handlers = ["None", "LLaVA-1.5", "LLaVA-1.6", "Moondream2", "nanoLLaVA", "llama3-Vision-Alpha", "MiniCPM-v2.6", "MiniCPM-v4", "Qwen3.5"]
 
 try:
     from llama_cpp.llama_chat_format import Gemma3ChatHandler
@@ -42,6 +43,15 @@ try:
     chat_handlers += ["Qwen3-VL", "Qwen3-VL-Thinking"]
 except:
     Qwen3VLChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import Qwen35ChatHandler
+    if Qwen35ChatHandler is not None and "Qwen3.5" not in chat_handlers:
+        chat_handlers += ["Qwen3.5"]
+except Exception as e:
+    Qwen35ChatHandler = None
+    if Qwen35ChatHandler is None:
+        print("[llama-cpp_vlm] Warning: Qwen3.5 handler not available (llama-cpp-python may need update)")
     
 try:
     from llama_cpp.llama_chat_format import (GLM46VChatHandler, LFM2VLChatHandler, GLM41VChatHandler)
@@ -105,6 +115,14 @@ class LLAMA_CPP_STORAGE:
     def load_model(cls, config):
         def get_chat_handler(chat_handler):
             match chat_handler:
+                case "Qwen3.5":
+                    if Qwen35ChatHandler is None:
+                        raise ValueError(
+                            "Qwen3.5 handler not available. "
+                            "Please update llama-cpp-python to the latest version.\n"
+                            "Run: pip install --upgrade llama-cpp-python"
+                        )
+                    return Qwen35ChatHandler
                 case "Qwen3-VL"|"Qwen3-VL-Thinking":
                     return Qwen3VLChatHandler
                 case "Qwen2.5-VL":
@@ -184,13 +202,33 @@ class LLAMA_CPP_STORAGE:
                             cls.chat_handler = handler(clip_model_path=mmproj_path, force_reasoning=think_mode, verbose=False)
                         except Exception as e:
                             cls.chat_handler = handler(clip_model_path=mmproj_path, use_think_prompt=think_mode, verbose=False)
+            elif chat_handler == "Qwen3.5":
+                # Qwen3.5 uses enable_thinking instead of force_reasoning
+                try:
+                    cls.chat_handler = handler(
+                        clip_model_path=mmproj_path,
+                        enable_thinking=True,
+                        image_max_tokens=image_max_tokens,
+                        image_min_tokens=image_min_tokens,
+                        verbose=False)
+                except Exception as e:
+                    if image_max_tokens > 0 or image_min_tokens > 0:
+                        raise ValueError('"image_min_tokens" and "image_max_tokens" are unavailable! Please update llama-cpp-python.')
+                    else:
+                        try:
+                            cls.chat_handler = handler(clip_model_path=mmproj_path, enable_thinking=True, verbose=False)
+                        except Exception as e:
+                            cls.chat_handler = handler(clip_model_path=mmproj_path, verbose=False)
             else:
                 cls.chat_handler = handler(clip_model_path=mmproj_path, verbose=False)
         else:
             if vram_limit != -1:
                 n_gpu_layers = max(1, int(vram_limit / gguf_layer_size))
             if handler is not None:
-                cls.chat_handler = handler(verbose=False)
+                if chat_handler == "Qwen3.5":
+                    cls.chat_handler = handler(enable_thinking=True, verbose=False)
+                else:
+                    cls.chat_handler = handler(verbose=False)
         
         print(f"[llama-cpp_vlm] Loading model: {model}")
         print(f"[llama-cpp_vlm] n_gpu_layers = {n_gpu_layers}")
@@ -279,7 +317,7 @@ def draw_bbox(image, json, mode):
             except Exception:
                 label = "bbox"
         x0, y0, x1, y1 = item["bbox_2d"]
-        if mode in ["Qwen3-VL", "Qwen2.5-VL"]:
+        if mode in ["Qwen3-VL", "Qwen2.5-VL", "Qwen3.5"]:
             size = 1000
             x0 = x0 / size * img.width
             y0 = y0 / size * img.height
@@ -438,7 +476,7 @@ class llama_cpp_instruct_adv:
                 "temperature": 0.8,
                 "repeat_penalty": 1.0,
                 "frequency_penalty": 0.0,
-                "presence_penalty": 1.0,
+                "present_penalty": 1.0,
                 "mirostat_mode": 0,
                 "mirostat_eta": 0.1,
                 "mirostat_tau": 5.0
@@ -564,7 +602,7 @@ class llama_cpp_parameters:
                 "temperature": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.01}),
                 "repeat_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "frequency_penalty": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "presence_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
+                "present_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
                 #"tfs_z": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "mirostat_mode": ("INT", {"default": 0, "min": 0, "max": 2, "step": 1}),
                 "mirostat_eta": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -626,7 +664,7 @@ class json_to_bbox:
         return {
             "required": {
                 "json": ("STRING", {"forceInput": True}),
-                "mode": (["simple","Qwen3-VL", "Qwen2.5-VL"], {"default": "simple"}),
+                "mode": (["simple","Qwen3-VL", "Qwen2.5-VL", "Qwen3.5"], {"default": "simple"}),
                 "label": ("STRING", {
                     "default":"",
                     "multiline": False,
@@ -692,7 +730,7 @@ class json_to_bbox:
                     print(f"Error drawing on image {curr_idx}: {e}")
                     processed_flat_results.append(curr_img)
                     
-            if mode in ["Qwen3-VL", "Qwen2.5-VL"]:
+            if mode in ["Qwen3-VL", "Qwen2.5-VL", "Qwen3.5"]:
                 if total_images == 0:
                     raise ValueError("Image required for Qwen mode")
                 curr_idx = i if i < total_images else (total_images - 1)
