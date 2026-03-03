@@ -485,6 +485,10 @@ class llama_cpp_instruct_adv:
         _uid = parameters.get("state_uid", None)
         _parameters = parameters.copy()
         _parameters.pop("state_uid", None)
+        # Pop enable_thinking and apply to chat_handler
+        enable_thinking = _parameters.pop("enable_thinking", True)
+        if hasattr(llama_model.chat_handler, 'extra_template_arguments'):
+            llama_model.chat_handler.extra_template_arguments["enable_thinking"] = enable_thinking
         uid = unique_id.rpartition('.')[-1] if _uid in (None, -1) else _uid
         
         last_sys_prompt = llama_model.sys_prompts.get(f"{uid}", None)
@@ -603,13 +607,16 @@ class llama_cpp_parameters:
                 "repeat_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "frequency_penalty": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "present_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
-                #"tfs_z": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "mirostat_mode": ("INT", {"default": 0, "min": 0, "max": 2, "step": 1}),
                 "mirostat_eta": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "mirostat_tau": ("FLOAT", {"default": 5.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "state_uid": ("INT", {
                     "default": -1, "min": -1, "max": 999999, "step": 1,
                     "tooltip": "Use a specific ID to save the conversation state.\n(-1 = use node's unique_id)"
+                }),
+                "enable_thinking": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable thinking/reasoning mode for Qwen3.5 and other models that support it."
                 }),
             }
         }
